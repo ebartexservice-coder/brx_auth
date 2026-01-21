@@ -16,7 +16,7 @@ import secrets
 from app.infrastructure.security.key_loader import KeyLoader
 
 
-# Argon2id password hashing context
+# Argon2id password hashing context (primary)
 # Using recommended parameters for 2026 security standards
 pwd_context = CryptContext(
     schemes=["argon2"],
@@ -25,6 +25,13 @@ pwd_context = CryptContext(
     argon2__time_cost=3,       # 3 iterations
     argon2__parallelism=4,      # 4 parallel threads
     argon2__hash_len=32        # 32 bytes hash length
+)
+
+# Legacy Bcrypt context for password migration
+# Supports both bcrypt (legacy) and argon2 (new)
+legacy_pwd_context = CryptContext(
+    schemes=["bcrypt", "argon2"],
+    deprecated="auto"
 )
 
 
@@ -65,7 +72,7 @@ class SecurityService:
     
     def verify_password(self, plain_password: str, hashed_password: str) -> bool:
         """
-        Verify password against hash
+        Verify password against hash (supports both Argon2id and legacy Bcrypt)
         
         Args:
             plain_password: Plain text password
@@ -75,11 +82,28 @@ class SecurityService:
             True if password matches, False otherwise
         """
         try:
+            # Try Argon2id first (new system)
             return pwd_context.verify(plain_password, hashed_password)
         except Exception:
-            # Handle legacy bcrypt hashes if migrating
-            # For now, return False on any error
-            return False
+            try:
+                # Fallback to legacy Bcrypt
+                return legacy_pwd_context.verify(plain_password, hashed_password)
+            except Exception:
+                return False
+    
+    def is_legacy_hash(self, hashed_password: str) -> bool:
+        """
+        Check if password hash is legacy Bcrypt format
+        
+        Args:
+            hashed_password: Hashed password from database
+            
+        Returns:
+            True if hash is legacy Bcrypt, False if Argon2id
+        """
+        # Bcrypt hashes start with $2a$, $2b$, or $2y$
+        # Argon2id hashes start with $argon2id$
+        return hashed_password.startswith(("$2a$", "$2b$", "$2y$"))
     
     def create_access_token(
         self,
