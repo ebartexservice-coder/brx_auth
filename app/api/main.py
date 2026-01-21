@@ -3,15 +3,18 @@ FastAPI Application Main Entry Point
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import os
 import logging
 
 from app.api.v1.endpoints.auth import router as auth_router
 from app.api.dependencies import startup_event, shutdown_event
+from app.core.config import get_settings
+
+# Get settings
+settings = get_settings()
 
 # Configure logging
 logging.basicConfig(
-    level=os.getenv("LOG_LEVEL", "INFO"),
+    level=settings.log_level,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 
@@ -19,16 +22,18 @@ logger = logging.getLogger(__name__)
 
 # Create FastAPI app
 app = FastAPI(
-    title="Auth Service",
+    title=settings.app_name,
     description="Enterprise authentication microservice",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    debug=settings.debug
 )
 
-# CORS configuration
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "").split(",")
-if allowed_origins and allowed_origins[0]:
+# CORS configuration using centralized settings
+allowed_origins = settings.get_allowed_origins()
+if allowed_origins:
+    logger.info(f"CORS enabled for origins: {allowed_origins}")
     app.add_middleware(
         CORSMiddleware,
         allow_origins=allowed_origins,
@@ -36,6 +41,8 @@ if allowed_origins and allowed_origins[0]:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+else:
+    logger.warning("No CORS origins configured. CORS middleware not added.")
 
 # Include routers
 app.include_router(auth_router, prefix="/api/v1")
